@@ -45,21 +45,28 @@ def get_db():
 def index():
     return {"message":"Viewing the home page"}
 
+from fastapi.security import OAuth2PasswordRequestForm
+
 @app.post("/login")
-def login(u: LoginInput, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == u.email).first()
-    if user and verify_password(u.password, user.password):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+    if user and verify_password(form_data.password, user.password):
         data: dict = {
-            "user_id":user.id,
+            "user_id": user.id,
             "names": user.names,
             "email": user.email,
             "phone": user.phone
         }
         access_token = generate_access_token(data={"sub": str(user.id)})
-        return {"message": "User Loged in well", "user_data":data, "access_token": access_token, "token_type":"bearer"}
-    raise HTTPException(status_code=401, detail="Invalid Email Or Password")
+        return {
+            "message": "User logged in successfully",
+            "user_data": data,
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+    raise HTTPException(status_code=401, detail="Invalid email or password")
 
-@app.post("/register")
+@app.post("/register", dependencies=[Depends(get_current_user)])
 def register_user(u: RegisterInput, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == u.email).first()
     if existing_user and (u.phone == existing_user.phone):
@@ -145,8 +152,8 @@ def get_all_products(db: Session = Depends(get_db)):
             p.back_image = []
     return products        
 
-@app.put("/update_product/{product_id}", response_model=ProductUpdate)
-def update_product(
+@app.put("/edit_product/{product_id}", response_model=ProductUpdate, dependencies=[Depends(get_current_user)])
+def edit_product(
     product_id: UUID,
     updated_data: ProductUpdate,
     db: Session = Depends(get_db)
@@ -171,3 +178,11 @@ def update_product(
     db.commit()
     db.refresh(product)
     return updated_data
+@app.delete("/delete_product/{product_id}",  dependencies=[Depends(get_current_user)])
+async def delete_product(product_id: UUID, db: Session = Depends(get_db),):
+    product = db.get(models.Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(product)
+    db.commit()
+    return {"message":"Product deleted well"}
