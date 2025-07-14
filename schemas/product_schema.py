@@ -32,6 +32,7 @@ class ProductInput(BaseModel):
 
 class ProductOut(BaseModel):
     id: UUID
+    created_by: UUID
     product_name: str
     selling_price: float
     buying_price: float
