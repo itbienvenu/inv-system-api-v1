@@ -28,7 +28,7 @@ class ProductInput(BaseModel):
     last_modified: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProductOut(BaseModel):
     id: UUID
@@ -49,7 +49,7 @@ class ProductOut(BaseModel):
     last_modified: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProductUpdate(BaseModel):
     product_name: Optional[str]
@@ -67,4 +67,4 @@ class ProductUpdate(BaseModel):
     last_modified: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True

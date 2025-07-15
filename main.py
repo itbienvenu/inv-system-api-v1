@@ -13,15 +13,16 @@ from datetime import datetime, UTC
 from utils.functions import generate_access_token, generate_hash, verify_password, decode_access_token
 import os, shutil, json, uuid
 import  json
+from database.database import Base, engine
 
 
 # ✅ Create all tables after all models are imported
 
 models.Base.metadata.create_all(bind=engine)
 load_dotenv()
-router = APIRouter()
+router = APIRouter(prefix="/sales", tags=["Sales"])
 app = FastAPI()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     user_id = decode_access_token(token)
@@ -68,7 +69,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         }
     raise HTTPException(status_code=401, detail="Invalid email or password")
 
-@app.post("/register")
+@app.post("/register", dependencies=[Depends(get_current_user)])
 def register_user(u: RegisterInput, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == u.email).first()
     if existing_user and (u.phone == existing_user.phone):
@@ -186,12 +187,14 @@ def view_product(product_id: UUID, db: Session = Depends(get_db)):
 @app.get("/api/v1/get_products", response_model=list[ProductOut], dependencies=[Depends(get_current_user)])
 def get_all_products(db: Session = Depends(get_db)):
     products = db.query(models.Product).all()
+    product_list = []
     for p in products:
         try:
-            p.back_image = p.back_image.split(",")
-        except:
+            p.back_image = json.loads(p.back_image)  # Convert from JSON string to list
+        except Exception:
             p.back_image = []
-    return products        
+        product_list.append(p)
+    return product_list    
 
 @app.put("/api/v1/edit_product/{product_id}", response_model=ProductUpdate, dependencies=[Depends(get_current_user)])
 def edit_product(
@@ -213,8 +216,7 @@ def edit_product(
 
     # Update last_modified automatically
     product.last_modified = datetime.now(UTC)
-    if updated_data.sku and updated_data.sku == product.sku:
-        raise HTTPException(status_code=400, detail="Try to use another SKU code")
+    
 
     db.commit()
     db.refresh(product)
@@ -232,99 +234,93 @@ async def delete_product(product_id: UUID, db: Session = Depends(get_db),):
 async def sell_product(
     sale_data: SaleInput,
     db: Session = Depends(get_db),
-    current_user: int = Depends(get_current_user)
+    current_user: UUID = Depends(get_current_user)  # Return UUID only from get_current_user
 ):
     """
     Process a sale transaction with multiple products.
     """
     try:
-        # Validate products and calculate totals
+        # Validate and calculate
         subtotal = 0.0
         products_to_sell = []
-        
+
         for product in sale_data.products:
-            # Check product availability
             db_product = db.query(models.Product).filter(models.Product.id == product.product_id).first()
             if not db_product:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Product with ID {product.product_id} not found"
                 )
-            
             if db_product.quantity < product.quantity_sold:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Not enough stock for product {db_product.product_name}. Available: {db_product.quantity}"
+                    detail=f"Not enough stock for product '{db_product.product_name}'. Available: {db_product.quantity}"
                 )
             
-            # Calculate product total
             product_total = product.selling_price * product.quantity_sold
-            subtotal += product_total
-            
-            # Prepare product data for sale
+            subtotal += product_total - product.discount
+
             products_to_sell.append({
                 "product_id": product.product_id,
                 "product_name": db_product.product_name,
                 "quantity_sold": product.quantity_sold,
                 "selling_price": product.selling_price,
-                "cost_price": db_product.buying_price  # Capture cost price at time of sale
+                "cost_price": db_product.buying_price,
+                "discount": product.discount
             })
-        
-        # Calculate final total (including discounts/taxes if applicable)
+
+        # Final totals
         total_discount = sale_data.total_discount or 0.0
         taxes = sale_data.taxes or 0.0
         total = subtotal - total_discount + taxes
-        
-        # Create the sale record
-        db_sale = SaleInput(
+
+        # Create sale DB model
+        db_sale = models.Sale(
             id=uuid4(),
             buyer_name=sale_data.buyer_name,
             buyer_phone=sale_data.buyer_phone,
             buyer_email=sale_data.buyer_email,
-            payment_method=sale_data.payment_method.value,  # Using enum value
+            payment_method=sale_data.payment_method.name,
             payment_reference=sale_data.payment_reference,
             subtotal=subtotal,
             total_discount=total_discount,
             taxes=taxes,
             total=total,
             currency=sale_data.currency,
-            sold_by=current_user.id,
-            location_id=sale_data.location_id,
-            device_id=sale_data.device_id,
-            status="completed",
+            sold_by=UUID(current_user),
             notes=sale_data.notes,
-            sold_at=datetime.now(UTC)
+            status="COMPLETED",
+            sold_at=sale_data.sold_at or datetime.now(UTC)
         )
-        
+
         db.add(db_sale)
-        db.flush()  # Flush to get the sale ID for product records
-        
-        # Create product sold records and update inventory
-        for product in products_to_sell:
-            # Record sold product
-            db_product_sold = ProductSold(
+        db.flush()  # To get sale ID
+
+        # Insert sold products and update stock
+        for p in products_to_sell:
+            db_product_sold = models.ProductSold(
                 sale_id=db_sale.id,
-                product_id=product["product_id"],
-                product_name=product["product_name"],
-                quantity_sold=product["quantity_sold"],
-                selling_price=product["selling_price"],
-                cost_price=product["cost_price"]
+                product_id=p["product_id"],
+                product_name=p["product_name"],
+                quantity_sold=p["quantity_sold"],
+                selling_price=p["selling_price"],
+                cost_price=p["cost_price"],
+                discount=p["discount"]
             )
             db.add(db_product_sold)
-            
-            # Update inventory
-            db_product = db.query(models.Product).filter(models.Product.id == product["product_id"]).first()
-            db_product.quantity -= product["quantity_sold"]
+
+            db_product = db.query(models.Product).filter(models.Product.id == p["product_id"]).first()
+            db_product.quantity -= p["quantity_sold"]
             db.add(db_product)
-        
+
         db.commit()
-        
+
         return {
             "message": "Sale completed successfully",
             "sale_id": str(db_sale.id),
             "total": total
         }
-    
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
