@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, UniqueConstraint, Float
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, UniqueConstraint, Float, Enum as SQLAlchemyEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.sql import func
@@ -69,7 +69,10 @@ class Sale(Base):
     buyer_phone = Column(String(20), nullable=False)
     buyer_email = Column(String, nullable=True)
 
-    payment_method = Column(ENUM(PaymentMethodDB), nullable=False)
+    payment_method = Column(
+    SQLAlchemyEnum(PaymentMethodDB, values_callable=lambda obj: [e.value for e in obj]), 
+    nullable=False
+)
     payment_reference = Column(String, nullable=True)
 
     subtotal = Column(Float, nullable=False)  # Backend-calculated
@@ -78,7 +81,11 @@ class Sale(Base):
     total = Column(Float, nullable=False)  # Backend-calculated
 
     currency = Column(String(3), default="USD", nullable=False)
-    status = Column(ENUM(SaleStatusDB), default=SaleStatusDB.COMPLETED, nullable=False)
+    status = Column(
+    SQLAlchemyEnum(SaleStatusDB, values_callable=lambda obj: [e.value for e in obj]), 
+    nullable=False,
+    default=SaleStatusDB.COMPLETED.value
+)
     notes = Column(String, nullable=True)
 
     sold_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

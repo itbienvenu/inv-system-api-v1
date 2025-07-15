@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import JSONResponse
 from schemas.user_schema import Users, RegisterInput, UpdateInput, LoginInput, Roles
 from schemas.product_schema import ProductInput, ProductImage, ProductOut,ProductUpdate
-from schemas.sales_schema import SaleInput, ProductSold, PaymentMethod
+from schemas.sales_schema import SaleInput, ProductSold, PaymentMethod, SaleOut
 from database import models
 from dotenv import load_dotenv
 from uuid import UUID, uuid4
@@ -14,13 +14,14 @@ from utils.functions import generate_access_token, generate_hash, verify_passwor
 import os, shutil, json, uuid
 import  json
 from database.database import Base, engine
+from typing import List, Optional
 
 
 # ✅ Create all tables after all models are imported
 
 models.Base.metadata.create_all(bind=engine)
 load_dotenv()
-router = APIRouter(prefix="/sales", tags=["Sales"])
+sales_router = APIRouter(prefix="/sales", tags=["Sales"])
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
@@ -230,7 +231,7 @@ async def delete_product(product_id: UUID, db: Session = Depends(get_db),):
     db.commit()
     return {"message":"Product deleted well"}
 
-@app.post("/sell_product", dependencies=[Depends(get_current_user)])
+@app.post("/api/v1/sell_product", dependencies=[Depends(get_current_user)])
 async def sell_product(
     sale_data: SaleInput,
     db: Session = Depends(get_db),
@@ -280,7 +281,7 @@ async def sell_product(
             buyer_name=sale_data.buyer_name,
             buyer_phone=sale_data.buyer_phone,
             buyer_email=sale_data.buyer_email,
-            payment_method=sale_data.payment_method.name,
+            payment_method=sale_data.payment_method.name.upper(),
             payment_reference=sale_data.payment_reference,
             subtotal=subtotal,
             total_discount=total_discount,
@@ -289,7 +290,7 @@ async def sell_product(
             currency=sale_data.currency,
             sold_by=UUID(current_user),
             notes=sale_data.notes,
-            status="COMPLETED",
+            status="completed".upper(),
             sold_at=sale_data.sold_at or datetime.now(UTC)
         )
 
@@ -327,3 +328,68 @@ async def sell_product(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing sale: {str(e)}"
         )
+
+@app.get("/api/v1/sales/{sale_id}", response_model=SaleOut, dependencies=[Depends(get_current_user)])
+def get_sale(sale_id: UUID, db: Session = Depends(get_db)):
+    sale = db.query(models.Sale).filter(models.Sale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    products = db.query(models.ProductSold).filter(models.ProductSold.sale_id == sale_id).all()
+    return SaleOut(
+        **sale.__dict__,
+        products=products
+    )
+
+@app.get("/api/v1/sales", response_model=List[SaleOut], dependencies=[Depends(get_current_user)])
+def get_all_sales(db: Session = Depends(get_db)):
+    sales = db.query(models.Sale).all()
+
+    result = []
+    for sale in sales:
+        sold_products = db.query(models.ProductSold).filter(models.ProductSold.sale_id == sale.id).all()
+        sale_out = SaleOut(
+            **sale.__dict__,
+            products=sold_products
+        )
+        result.append(sale_out)
+    return result
+
+@app.delete("/api/v1/sales/{sale_id}", dependencies=[Depends(get_current_user)])
+def delete_sale(sale_id: UUID, db: Session = Depends(get_db)):
+    sale = db.query(models.Sale).filter(models.Sale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    db.delete(sale)
+    db.commit()
+    return {"message": "Sale deleted successfully"}
+
+# @app.get("/sales/search", response_model=List[SaleOut])
+# def search_sales(
+#     start_date: Optional[datetime] = None,
+#     end_date: Optional[datetime] = None,
+#     sold_by: Optional[UUID] = None,
+#     db: Session = Depends(get_db)
+# ):
+#     query = db.query(models.Sale)
+#     if start_date:
+#         query = query.filter(models.Sale.sold_at >= start_date)
+#     if end_date:
+#         query = query.filter(models.Sale.sold_at <= end_date)
+#     if sold_by:
+#         query = query.filter(models.Sale.sold_by == sold_by)
+#     return query.order_by(models.Sale.sold_at.desc()).all()
+
+
+# @app.get("/sales/summary", dependencies=[Depends(get_current_user)])
+# def sales_summary(db: Session = Depends(get_db)):
+#     total_sales = db.query(func.sum(models.Sale.total)).scalar() or 0
+#     total_products = db.query(func.sum(models.ProductSold.quantity_sold)).scalar() or 0
+#     total_tax = db.query(func.sum(models.Sale.taxes)).scalar() or 0
+
+#     return {
+#         "total_sales": total_sales,
+#         "total_products_sold": total_products,
+#         "total_tax_collected": total_tax
+#     }
+
