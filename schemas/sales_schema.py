@@ -84,3 +84,13 @@ class SaleOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SaleStatusEnum(CaseInsensitiveEnum):
+    completed = "completed"
+    pending = "pending"
+    refunded = "refunded"
+    partially_refunded = "partially_refunded"
+
+class SaleUpdateStatus(BaseModel):
+    status: SaleStatusEnum

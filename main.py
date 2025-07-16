@@ -1,15 +1,17 @@
-from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, UploadFile, File, Form,Query
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from schemas.user_schema import Users, RegisterInput, UpdateInput, LoginInput, Roles
 from schemas.product_schema import ProductInput, ProductImage, ProductOut,ProductUpdate
-from schemas.sales_schema import SaleInput, ProductSold, PaymentMethod, SaleOut
+from schemas.sales_schema import SaleInput, ProductSold, PaymentMethod, SaleOut,SaleUpdateStatus
 from database import models
 from dotenv import load_dotenv
 from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
+from sqlalchemy import func, desc, cast, Date
 from database.database import Base, engine, SessionLocal
-from datetime import datetime, UTC
+from datetime import datetime, UTC, date
 from utils.functions import generate_access_token, generate_hash, verify_password, decode_access_token
 import os, shutil, json, uuid
 import  json
@@ -329,6 +331,8 @@ async def sell_product(
             detail=f"Error processing sale: {str(e)}"
         )
 
+#Endpoint to display sale according to it ID
+
 @app.get("/api/v1/sales/{sale_id}", response_model=SaleOut, dependencies=[Depends(get_current_user)])
 def get_sale(sale_id: UUID, db: Session = Depends(get_db)):
     sale = db.query(models.Sale).filter(models.Sale.id == sale_id).first()
@@ -340,6 +344,8 @@ def get_sale(sale_id: UUID, db: Session = Depends(get_db)):
         **sale.__dict__,
         products=products
     )
+
+#Endpoint to display all sales
 
 @app.get("/api/v1/sales", response_model=List[SaleOut], dependencies=[Depends(get_current_user)])
 def get_all_sales(db: Session = Depends(get_db)):
@@ -355,8 +361,13 @@ def get_all_sales(db: Session = Depends(get_db)):
         result.append(sale_out)
     return result
 
+#Endpoint to delete the sale by it ID
+
 @app.delete("/api/v1/sales/{sale_id}", dependencies=[Depends(get_current_user)])
 def delete_sale(sale_id: UUID, db: Session = Depends(get_db)):
+    """
+    Deleting the sale by its id
+    """
     sale = db.query(models.Sale).filter(models.Sale.id == sale_id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
@@ -364,6 +375,120 @@ def delete_sale(sale_id: UUID, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Sale deleted successfully"}
 
+#Endpoint to  create sales order document, but here will return just json,forn end will deal with wich document to export
+@app.get("/api/v1/sales/{sale_id}/document", dependencies=[Depends(get_current_user)])
+async def generate_sales_document(sale_id: UUID, db: Session = Depends(get_db)):
+    sale = db.query(models.Sale).filter(models.Sale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Invalid sale ID")
+
+    # Optionally include sold products
+    sold_products = db.query(models.ProductSold).filter(models.ProductSold.sale_id == sale_id).all()
+
+    response = {
+        "sale": jsonable_encoder(sale),
+        "products": jsonable_encoder(sold_products)
+    }
+
+    return response
+
+#Endpoint to edit sale
+
+@app.put("/api/v1/sales/{sale_id}", dependencies=[Depends(get_current_user)])
+def update_sale_status(
+    sale_id: UUID,
+    update_data: SaleUpdateStatus,
+    db: Session = Depends(get_db)
+):
+    sale = db.query(models.Sale).filter(models.Sale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    
+    sale.status = update_data.status.value.lower()
+    db.commit()
+    return {"message": f"Sale status updated to {sale.status}"}
+
+
+# filter sales by seller
+
+@app.get("/api/v1/sales/by_seller/{seller_id}", dependencies=[Depends(get_current_user)])
+def get_sales_by_seller(seller_id: UUID, db: Session = Depends(get_db)):
+    sales = db.query(models.Sale).filter(models.Sale.sold_by == seller_id).all()
+    if not sales:
+        raise HTTPException(status_code=404, detail="No sales found for this seller")
+    
+    return sales
+
+@app.get("/api/v1/sales/report/summary", dependencies=[Depends(get_current_user)])
+def get_sales_summary(
+    db: Session = Depends(get_db),
+    date_from: date = Query(None, description="Filter sales from this date (YYYY-MM-DD)"),
+    date_to: date = Query(None, description="Filter sales up to this date (YYYY-MM-DD)")
+):
+    # Build base query
+    sales_query = db.query(models.Sale)
+    products_query = db.query(models.ProductSold)
+
+    if date_from:
+        sales_query = sales_query.filter(cast(models.Sale.sold_at, Date) >= date_from)
+        products_query = products_query.join(models.Sale).filter(cast(models.Sale.sold_at, Date) >= date_from)
+
+    if date_to:
+        sales_query = sales_query.filter(cast(models.Sale.sold_at, Date) <= date_to)
+        products_query = products_query.join(models.Sale).filter(cast(models.Sale.sold_at, Date) <= date_to)
+
+    # Metrics
+    total_sales = sales_query.count()
+    total_revenue = sales_query.with_entities(func.sum(models.Sale.total)).scalar() or 0.0
+    total_taxes = sales_query.with_entities(func.sum(models.Sale.taxes)).scalar() or 0.0
+    total_profit = products_query.with_entities(func.sum(models.ProductSold.selling_price - models.ProductSold.cost_price)).scalar() or 0.0
+
+    pending_sales = sales_query.filter(models.Sale.status == "pending").count()
+    completed_sales = sales_query.filter(models.Sale.status == "completed").count()
+    refunded_sales = sales_query.filter(models.Sale.status == "refunded").count()
+    partial_refunded_sales = sales_query.filter(models.Sale.status == "partially_refunded").count()
+
+    # Most sold product
+    top_product = products_query.with_entities(
+        models.ProductSold.product_name,
+        func.sum(models.ProductSold.quantity_sold).label("total_sold")
+    ).group_by(models.ProductSold.product_name).order_by(desc("total_sold")).first()
+
+    # Top seller
+    top_seller = db.query(
+        models.User.names,
+        func.count(models.Sale.id).label("sales_count")
+    ).join(models.Sale, models.Sale.sold_by == models.User.id)
+
+    if date_from:
+        top_seller = top_seller.filter(cast(models.Sale.sold_at, Date) >= date_from)
+    if date_to:
+        top_seller = top_seller.filter(cast(models.Sale.sold_at, Date) <= date_to)
+
+    top_seller = top_seller.group_by(models.User.names).order_by(desc("sales_count")).first()
+
+    return {
+        "filters": {
+            "date_from": date_from,
+            "date_to": date_to
+        },
+        "total_sales": total_sales,
+        "total_revenue": total_revenue,
+        "total_taxes": total_taxes,
+        "total_profit": total_profit,
+        "pending_sales": pending_sales,
+        "completed_sales": completed_sales,
+        "refunded_sales": refunded_sales,
+        "partial_refunded_sales": partial_refunded_sales,
+        "most_sold_product": {
+            "name": top_product[0] if top_product else None,
+            "quantity_sold": top_product[1] if top_product else 0
+        },
+        "top_seller": {
+            "name": top_seller[0] if top_seller else None,
+            "sales_count": top_seller[1] if top_seller else 0
+        }
+    }
 # @app.get("/sales/search", response_model=List[SaleOut])
 # def search_sales(
 #     start_date: Optional[datetime] = None,
