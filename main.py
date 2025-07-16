@@ -47,9 +47,24 @@ def get_db():
         db.close()
 
 
-@app.get("/")
+@app.get("/api/v1/")
 def index():
-    return {"message":"Viewing the home page"}
+    return {
+        "message": "Welcome to the Inventory & Sales API!",
+        "version": "v1",
+        "status": "online",
+        "endpoints": {
+            "authentication": "/api/v1/login",
+            "create_sale": "/sell_product",
+            "list_sales": "/sales",
+            "sale_summary": "/sales/report/summary",
+            "update_sale": "/sales/{sale_id}",
+            "get_sale": "/sales/{sale_id}",
+            "sale_document": "/sales/{sale_id}/document"
+        },
+        "documentation": "/docs"
+    }
+
 
 from fastapi.security import OAuth2PasswordRequestForm
 
