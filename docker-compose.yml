@@ -6,27 +6,19 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # These args are passed to the Dockerfile during the BUILD phase
-        # They are crucial for 'FROM python:3.11-slim' and 'RUN pip install'
+        
         HTTP_PROXY: http://192.168.113.101:8080
         HTTPS_PROXY: http://192.168.113.101:8080
-        # Optional: Add any internal domains or IPs that should bypass the proxy during build
-        # NO_PROXY: localhost,127.0.0.1,.yourcompany.com
+  
     container_name: inv-api-container
     ports:
       - "8000:8000"
     volumes:
       - .:/app
     environment:
-      # These environment variables are set for the container when it RUNS
-      # Ensure they are in 'KEY=VALUE' format within a list.
+  
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=sqlite:///./inv-api.db
-      # If your running FastAPI app also needs to access external internet resources
-      # via the proxy, you should also include these here:
-      # - HTTP_PROXY=http://your.proxy.server:port
-      # - HTTPS_PROXY=http://your.proxy.server:port
-      # Optional: Add any internal domains or IPs that should bypass the proxy during runtime
-      # - NO_PROXY=localhost,127.0.0.1,.yourcompany.com
+
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, UploadFile, File, Form,Query
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from schemas.user_schema import Users, RegisterInput, UpdateInput, LoginInput, Roles
@@ -26,6 +27,15 @@ load_dotenv()
 sales_router = APIRouter(prefix="/sales", tags=["Sales"])
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
+
+#Managing cors
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],  
+)
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     user_id = decode_access_token(token)
