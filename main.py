@@ -28,7 +28,7 @@ sales_router = APIRouter(prefix="/sales", tags=["Sales"])
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
-#Managing cors
+# Managing cors
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -86,7 +86,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             "user_id": user.id,
             "names": user.names,
             "email": user.email,
-            "phone": user.phone
+            "phone": user.phone,
+            "role": user.role
         }
         access_token = generate_access_token(data={"sub": str(user.id)})
         return {
@@ -97,7 +98,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         }
     raise HTTPException(status_code=401, detail="Invalid email or password")
 
-@app.post("/register", dependencies=[Depends(get_current_user)])
+@app.post("/api/v1/register")
 def register_user(u: RegisterInput, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == u.email).first()
     if existing_user and (u.phone == existing_user.phone):

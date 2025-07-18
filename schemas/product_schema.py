@@ -52,18 +52,18 @@ class ProductOut(BaseModel):
         from_attributes = True
 
 class ProductUpdate(BaseModel):
-    product_name: Optional[str]
-    selling_price: Optional[float]
-    buying_price: Optional[float]
-    quantity: Optional[int]
-    category: Optional[str]
-    brand: Optional[str]
-    front_image: Optional[str]
-    back_image: Optional[List[str]]
-    description: Optional[str]
-    sku: Optional[str]
-    unit: Optional[str]
-    low_stock_alert: Optional[int]
+    product_name: Optional[str] = None
+    selling_price: Optional[float] = None
+    buying_price: Optional[float] = None
+    quantity: Optional[int] = None
+    category: Optional[str] = None
+    brand: Optional[str] = None
+    front_image: Optional[str] = None
+    back_image: Optional[List[str]] = None
+    description: Optional[str] = None
+    sku: Optional[str] = None
+    unit: Optional[str] = None
+    low_stock_alert: Optional[int] = None
     last_modified: Optional[datetime] = None
 
     class Config:
