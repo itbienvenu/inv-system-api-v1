@@ -12,7 +12,7 @@ class ProductImage(BaseModel):
 
 class ProductInput(BaseModel):
     id: Optional[UUID] = uuid4()
-    created_by: UUID
+    # created_by: Optional[UUID] = None
     product_name: str
     selling_price: float
     buying_price: float
@@ -24,7 +24,7 @@ class ProductInput(BaseModel):
     sku: Optional[str] = None
     unit: Optional[str] = "pcs"
     low_stock_alert: Optional[int] = 10
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(UTC))
     last_modified: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Config:

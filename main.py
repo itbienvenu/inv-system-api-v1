@@ -140,7 +140,6 @@ async def register_product(
     sku: str = Form(...),
     unit: str = Form(...),
     low_stock_alert: int = Form(...),
-    created_by: UUID = Form(...),
     db: Session = Depends(get_db),
     current_user: int = Depends(get_current_user)
 ):
