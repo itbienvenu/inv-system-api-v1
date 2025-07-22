@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, UploadFile, File, Form,Query
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from schemas.user_schema import Users, RegisterInput, UpdateInput, LoginInput, Roles
@@ -20,12 +22,14 @@ from database.database import Base, engine
 from typing import List, Optional
 
 
+
 # ✅ Create all tables after all models are imported
 
 models.Base.metadata.create_all(bind=engine)
 load_dotenv()
 sales_router = APIRouter(prefix="/sales", tags=["Sales"])
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
 # Managing cors
@@ -76,7 +80,10 @@ def index():
     }
 
 
-from fastapi.security import OAuth2PasswordRequestForm
+
+@app.get("/api/v1/ping")
+def ping(user_id: int = Depends(get_current_user)):
+    return {"status": "alive"}
 
 @app.post("/api/v1/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
