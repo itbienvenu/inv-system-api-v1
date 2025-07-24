@@ -30,7 +30,7 @@ from database import  models
 
 from auth.auth import get_current_user
 
-from routers import supplier, sales, product
+from routers import supplier, sales, product, login
 # ✅ Create all tables after all models are imported
 
 models.Base.metadata.create_all(bind=engine)
@@ -39,6 +39,7 @@ app = FastAPI()
 
 #Routers
 sales_router = APIRouter(prefix="/sales", tags=["Sales"])
+app.include_router(login.router)
 app.include_router(supplier.router)
 app.include_router(sales.router)
 app.include_router(product.router)
@@ -79,60 +80,4 @@ def index():
         },
         "documentation": "/docs"
     }
-
-
-
-@app.get("/api/v1/ping")
-def ping(user_id: int = Depends(get_current_user)):
-    return {"status": "alive"}
-
-@app.post("/api/v1/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    if user and verify_password(form_data.password, user.password):
-        data: dict = {
-            "user_id": user.id,
-            "names": user.names,
-            "email": user.email,
-            "phone": user.phone,
-            "role": user.role
-        }
-        access_token = generate_access_token(data={"sub": str(user.id)})
-        return {
-            "message": "User logged in successfully",
-            "user_data": data,
-            "access_token": access_token,
-            "token_type": "bearer"
-        }
-    raise HTTPException(status_code=401, detail="Invalid email or password")
-
-@app.post("/api/v1/register")
-def register_user(u: RegisterInput, db: Session = Depends(get_db)):
-    existing_user = db.query(models.User).filter(models.User.email == u.email).first()
-    if existing_user and (u.phone == existing_user.phone):
-        raise HTTPException(status_code=401, detail="User Already Exists. Try Another Email")
-    
-    new_user = models.User(
-        id=uuid4(),
-        names=str(u.names),
-        email=str(u.email),
-        phone=int(u.phone),
-        password=generate_hash(str(u.password)),
-        role=",".join([r.value for r in u.role])
-    )
-    user_data: dict = {
-        "user_id": new_user.id,
-        "names": u.names,
-        "email": u.email,
-        "phone": u.phone,
-        "role": u.role
-    }
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"message": "User Registered Well", "user_data": user_data}
-
-
-
-#Endpoint to display sale according to it ID
 
