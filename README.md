@@ -7,7 +7,6 @@ A RESTful API for managing products, sales transactions, and user authentication
 ## 📚 Table of Contents
 
 - [🚀 Features](#-features)
-- [📁 Project Structure](#-project-structure)
 - [📌 Endpoints Documentation](#-endpoints-documentation)
   - [1. Authentication](#1-authentication)
   - [2. User Management](#2-user-management)
@@ -44,26 +43,6 @@ A RESTful API for managing products, sales transactions, and user authentication
   - JWT-based authentication
   - Role-based access control
   - User registration and login
-
-## 📁 Project Structure
-
-<pre>
-
-................
-├── main.py # Main API routes and application 
-├── database/ # Database models and connection
-│├── models.py # SQLAlchemy models 
-│└── database.py # Database configuration 
-├── schemas/ # Pydantic models for data validation 
-│ ├── user_schema.py # User-related schemas 
-│ ├── product_schema.py # Product-related schemas 
-│ └── sales_schema.py # Sales-related schemas 
-├── utils/ # Utility functions 
-│ └── functions.py # Token generation and password hashing 
-└── static/ # File storage └── images/ # Product images storage
-
-
-</pre>
 
 
 ## 📌 Endpoints Documentation
